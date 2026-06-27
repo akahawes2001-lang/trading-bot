@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Тест API</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .status { padding: 10px; margin: 10px 0; border-radius: 5px; }
+        .success { background-color: #d4edda; color: #155724; }
+        .error { background-color: #f8d7da; color: #721c24; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+        pre { background-color: #f8f9fa; padding: 10px; border-radius: 5px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>Тест API Торгового Бота</h1>
+    
+    <div>
+        <button onclick="testStatus()">Проверить статус</button>
+        <button onclick="startBot()">Запустить бота</button>
+        <button onclick="stopBot()">Остановить бота</button>
+        <button onclick="testSymbols()">Получить символы</button>
+        <button onclick="testAnalysis()">Анализ BTCUSDT</button>
+    </div>
+    
+    <div id="results"></div>
+    
+    <script>
+        const API_BASE = 'http://localhost:3000/api';
+        
+        async function makeRequest(endpoint, method = 'GET', data = null) {
+            try {
+                const options = {
+                    method,
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                };
+                
+                if (data) {
+                    options.body = JSON.stringify(data);
+                }
+                
+                const response = await fetch(`${API_BASE}${endpoint}`, options);
+                const result = await response.json();
+                
+                return { success: true, data: result };
+            } catch (error) {
+                return { success: false, error: error.message };
+            }
+        }
+        
+        function showResult(title, result) {
+            const resultsDiv = document.getElementById('results');
+            const div = document.createElement('div');
+            div.className = `status ${result.success ? 'success' : 'error'}`;
+            
+            div.innerHTML = `
+                <h3>${title}</h3>
+                <pre>${JSON.stringify(result, null, 2)}</pre>
+            `;
+            
+            resultsDiv.appendChild(div);
+        }
+        
+        async function testStatus() {
+            const result = await makeRequest('/bot/status');
+            showResult('Статус бота', result);
+        }
+        
+        async function startBot() {
+            const result = await makeRequest('/bot/start', 'POST');
+            showResult('Запуск бота', result);
+        }
+        
+        async function stopBot() {
+            const result = await makeRequest('/bot/stop', 'POST');
+            showResult('Остановка бота', result);
+        }
+        
+        async function testSymbols() {
+            const result = await makeRequest('/market/symbols');
+            showResult('Список символов', result);
+        }
+        
+        async function testAnalysis() {
+            const result = await makeRequest('/analysis/BTCUSDT');
+            showResult('Анализ BTCUSDT', result);
+        }
+        
+        // Автоматически проверим статус при загрузке
+        window.onload = testStatus;
+    </script>
+</body>
+</html> 

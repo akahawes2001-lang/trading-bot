@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: qtrader
+    env: node
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: BOT_MODE
+      - key: DEMO_BALANCE
+      - key: RISK_PERCENT
+      - key: MAX_POSITIONS
+      - key: BYBIT_API_KEY
+      - key: BYBIT_SECRET_KEY
+      - key: BYBIT_TESTNET
+      - key: BREAKOUT_CONFIRMATION_CANDLES
+      - key: SUPPORT_RESISTANCE_PERIOD
+      - key: MIN_VOLUME_THRESHOLD
+      - key: NUMBER_OF_POSITIONS
+      - key: MIN_VOLUME
+      - key: TOP_SYMBOLS_COUNT
+      - key: USE_DYNAMIC_SYMBOLS
+      - key: DEMO_SEND_REAL_ORDERS
+      - key: TRADING_SYMBOLS
+      - key: PORT
+      - key: NODE_ENV
+      - key: TELEGRAM_BOT_TOKEN
+      - key: TELEGRAM_CHAT_ID

@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Торговый Бот - Пробитие Уровней</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #2c3e50;
+            --secondary-color: #3498db;
+            --success-color: #27ae60;
+            --danger-color: #e74c3c;
+            --warning-color: #f39c12;
+            --dark-bg: #1a1a1a;
+            --card-bg: #2d2d2d;
+            --text-color: #ecf0f1;
+        }
+
+        body {
+            background-color: var(--dark-bg);
+            color: var(--text-color);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        .card {
+            background-color: var(--card-bg);
+            border: 1px solid #444;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+
+        .card-header {
+            background-color: var(--primary-color);
+            border-bottom: 1px solid #444;
+            border-radius: 10px 10px 0 0 !important;
+        }
+
+        .btn-primary {
+            background-color: var(--secondary-color);
+            border-color: var(--secondary-color);
+        }
+
+        .btn-success {
+            background-color: var(--success-color);
+            border-color: var(--success-color);
+        }
+
+        .btn-danger {
+            background-color: var(--danger-color);
+            border-color: var(--danger-color);
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+        }
+
+        .status-running {
+            background-color: var(--success-color);
+            animation: pulse 2s infinite;
+        }
+
+        .status-stopped {
+            background-color: var(--danger-color);
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .stat-card {
+            text-align: center;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            font-size: 0.9rem;
+            opacity: 0.8;
+        }
+
+        .profit {
+            color: var(--success-color);
+        }
+
+        .loss {
+            color: var(--danger-color);
+        }
+
+        .table {
+            color: var(--text-color);
+        }
+
+        .table th {
+            background-color: var(--primary-color);
+            border-color: #444;
+        }
+
+        .table td {
+            border-color: #444;
+        }
+
+        .loading {
+            display: none;
+        }
+
+        .loading.show {
+            display: inline-block;
+        }
+
+        .alert {
+            border-radius: 10px;
+            border: none;
+        }
+
+        .nav-tabs {
+            border-bottom: 1px solid #444;
+        }
+
+        .nav-tabs .nav-link {
+            color: var(--text-color);
+            border: none;
+            border-radius: 10px 10px 0 0;
+        }
+
+        .nav-tabs .nav-link.active {
+            background-color: var(--secondary-color);
+            color: white;
+        }
+
+        .form-control, .form-select {
+            background-color: var(--card-bg);
+            border: 1px solid #444;
+            color: var(--text-color);
+        }
+
+        .form-control:focus, .form-select:focus {
+            background-color: var(--card-bg);
+            border-color: var(--secondary-color);
+            color: var(--text-color);
+            box-shadow: 0 0 0 0.2rem rgba(52, 152, 219, 0.25);
+        }
+
+        /* Улучшенные стили для символов */
+        .symbol-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            margin: 2px;
+            background-color: var(--secondary-color);
+            color: white;
+            border-radius: 6px;
+            font-weight: bold;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+        }
+
+        .symbol-select-option {
+            font-weight: bold;
+            color: var(--text-color);
+            padding: 8px 12px;
+        }
+
+        .symbol-select-option:hover {
+            background-color: var(--secondary-color);
+            color: white;
+        }
+
+        .symbol-table-cell {
+            font-weight: bold;
+            color: var(--secondary-color);
+            text-transform: uppercase;
+            font-size: 1.1rem;
+        }
+
+        /* Улучшенные стили для селектов */
+        .form-select option {
+            background-color: var(--card-bg);
+            color: var(--text-color);
+            padding: 8px;
+        }
+
+        .form-select option:hover {
+            background-color: var(--secondary-color);
+        }
+
+        /* Стили для отображения символов в карточках */
+        .symbol-card {
+            background: linear-gradient(135deg, var(--secondary-color), var(--primary-color));
+            border: 2px solid var(--secondary-color);
+            border-radius: 15px;
+            padding: 15px;
+            margin: 10px 0;
+            text-align: center;
+        }
+
+        .symbol-card .symbol-name {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: white;
+            text-transform: uppercase;
+            margin-bottom: 10px;
+        }
+
+        .symbol-card .symbol-price {
+            font-size: 1.2rem;
+            color: var(--text-color);
+            margin-bottom: 5px;
+        }
+
+        /* Улучшенные стили для таблиц */
+        .table th {
+            background-color: var(--primary-color);
+            border-color: #444;
+            font-weight: bold;
+            text-transform: uppercase;
+            font-size: 0.9rem;
+        }
+
+        .table td {
+            border-color: #444;
+            vertical-align: middle;
+        }
+
+        .table tbody tr:hover {
+            background-color: rgba(52, 152, 219, 0.1);
+        }
+
+        /* Стили для статуса символов */
+        .symbol-status {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .symbol-status.active {
+            background-color: var(--success-color);
+        }
+
+        .symbol-status.inactive {
+            background-color: var(--danger-color);
+        }
+
+        /* Дополнительные улучшения для символов */
+        .symbol-badge {
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .symbol-badge:hover {
+            background-color: var(--success-color);
+            transform: scale(1.05);
+            box-shadow: 0 4px 8px rgba(52, 152, 219, 0.3);
+        }
+
+        .symbol-card {
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .symbol-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(52, 152, 219, 0.3);
+        }
+
+        /* Улучшенные стили для селектов */
+        .form-select {
+            font-weight: bold;
+            font-size: 1rem;
+        }
+
+        .form-select option {
+            font-weight: bold;
+            padding: 10px;
+        }
+
+        /* Анимации для загрузки */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .symbol-card {
+            animation: fadeIn 0.5s ease-out;
+        }
+
+        /* Улучшенные стили для таблиц */
+        .table tbody tr {
+            transition: background-color 0.3s ease;
+        }
+
+        .table tbody tr:hover {
+            background-color: rgba(52, 152, 219, 0.15);
+        }
+
+        /* Стили для уведомлений */
+        .alert {
+            border-radius: 10px;
+            border: none;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+        .signal-card {
+            transition: transform 0.2s;
+        }
+        .signal-card:hover {
+            transform: translateY(-2px);
+        }
+        .copy-btn {
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <!-- Заголовок -->
+        <div class="row mt-3">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="mb-0">
+                            <i class="fas fa-robot"></i> Торговый Бот - Стратегия Пробития Уровней
+                        </h2>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Статус бота -->
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <span id="statusIndicator" class="status-indicator status-stopped"></span>
+                            Статус Бота
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <button id="startBot" class="btn btn-success btn-lg me-2">
+                                    <i class="fas fa-play"></i> Запустить Бота
+                                </button>
+                                <button id="stopBot" class="btn btn-danger btn-lg" disabled>
+                                    <i class="fas fa-stop"></i> Остановить Бота
+                                </button>
+                            </div>
+                            <div class="col-md-6 text-end">
+                                <button id="resetDemo" class="btn btn-warning">
+                                    <i class="fas fa-redo"></i> Сбросить Демо-Баланс
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Статистика -->
+        <div class="row">
+            <div class="col-md-3">
+                <div class="card stat-card">
+                    <div class="stat-value" id="totalBalance">$0</div>
+                    <div class="stat-label">Общий Баланс</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stat-card">
+                    <div class="stat-value" id="availableBalance">$0</div>
+                    <div class="stat-label">Доступный Баланс</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stat-card">
+                    <div class="stat-value" id="totalPnL">$0</div>
+                    <div class="stat-label">Общий PnL</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stat-card">
+                    <div class="stat-value" id="winRate">0%</div>
+                    <div class="stat-label">Процент Побед</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Основной контент -->
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <ul class="nav nav-tabs card-header-tabs" id="mainTabs" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link active" id="positions-tab" data-bs-toggle="tab" data-bs-target="#positions" type="button" role="tab">
+                                    <i class="fas fa-chart-line"></i> Активные Позиции
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="trades-tab" data-bs-toggle="tab" data-bs-target="#trades" type="button" role="tab">
+                                    <i class="fas fa-history"></i> История Сделок
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link" id="signals-tab" data-bs-toggle="tab" data-bs-target="#signals" type="button" role="tab">
+                                        🚀 Сигналы
+                                    </button>
+                                </li>
+
+                                <button class="nav-link" id="analysis-tab" data-bs-toggle="tab" data-bs-target="#analysis" type="button" role="tab">
+                                    <i class="fas fa-chart-bar"></i> Анализ Рынка
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="manual-tab" data-bs-toggle="tab" data-bs-target="#manual" type="button" role="tab">
+                                    <i class="fas fa-hand-paper"></i> Ручная Торговля
+                                </button>
+                            </li>
+                        </ul>
+                    </div>
+                    <div class="card-body">
+                        <div class="tab-content" id="mainTabsContent">
+                            <!-- Активные позиции -->
+                            <div class="tab-pane fade show active" id="positions" role="tabpanel">
+                                <div id="positionsTable">
+                                    <div class="text-center">
+                                        <div class="spinner-border" role="status">
+                                            <span class="visually-hidden">Загрузка...</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- История сделок -->
+                            <div class="tab-pane fade" id="trades" role="tabpanel">
+                                <div id="tradesTable">
+                                    <div class="text-center">
+                                        <div class="spinner-border" role="status">
+                                            <span class="visually-hidden">Загрузка...</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Анализ рынка -->
+                            <!-- Сигналы -->
+                            <div class="tab-pane fade" id="signals" role="tabpanel">
+                                <div class="row mt-3">
+                                    <div class="col-12">
+                                        <div class="card">
+                                            <div class="card-header">
+                                                <h6 class="mb-0">🚀 Сигналы на сделки</h6>
+                                            </div>
+                                            <div class="card-body">
+                                                <p class="text-muted small">Нажмите «Открыть на Bybit» — откроется торговая страница. Кнопки SL/TP копируют значения.</p>
+                                                <div id="signalsContainer"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+
+                            <div class="tab-pane fade" id="analysis" role="tabpanel">
+                                <div class="row">
+                                    <div class="col-md-4">
+                                        <label for="symbolSelect" class="form-label">Символ</label>
+                                        <select class="form-select" id="symbolSelect">
+                                            <option value="">Выберите символ...</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">&nbsp;</label>
+                                        <button id="analyzeSymbol" class="btn btn-primary d-block">
+                                            <i class="fas fa-search"></i> Анализировать
+                                        </button>
+                                    </div>
+                                </div>
+                    
+                                
+                                <div id="analysisResults" class="mt-3"></div>
+                            </div>
+
+                            <!-- Ручная торговля -->
+                            <div class="tab-pane fade" id="manual" role="tabpanel">
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="card">
+                                            <div class="card-header">
+                                                <h6 class="mb-0">Открыть Позицию</h6>
+                                            </div>
+                                            <div class="card-body">
+                                                <form id="openPositionForm">
+                                                    <div class="mb-3">
+                                                        <label for="manualSymbol" class="form-label">Символ</label>
+                                                        <select class="form-select" id="manualSymbol" required>
+                                                            <option value="">Выберите символ...</option>
+                                                        </select>
+                                                    </div>
+                                                    <div class="mb-3">
+                                                        <label for="positionType" class="form-label">Тип позиции</label>
+                                                        <select class="form-select" id="positionType" required>
+                                                            <option value="LONG">LONG (Покупка)</option>
+                                                            <option value="SHORT">SHORT (Продажа)</option>
+                                                        </select>
+                                                    </div>
+                                                    <div class="mb-3">
+                                                        <label for="positionSize" class="form-label">Размер позиции</label>
+                                                        <input type="number" class="form-control" id="positionSize" required min="0.01" step="0.01">
+                                                    </div>
+                                                    <button type="submit" class="btn btn-success">
+                                                        <i class="fas fa-plus"></i> Открыть Позицию
+                                                    </button>
+                                                </form>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="card">
+                                            <div class="card-header">
+                                                <h6 class="mb-0">Закрыть Позицию</h6>
+                                            </div>
+                                            <div class="card-body">
+                                                <form id="closePositionForm">
+                                                    <div class="mb-3">
+                                                        <label for="closeSymbol" class="form-label">Символ</label>
+                                                        <select class="form-select" id="closeSymbol" required>
+                                                            <option value="">Выберите символ...</option>
+                                                        </select>
+                                                    </div>
+                                                    <button type="submit" class="btn btn-danger">
+                                                        <i class="fas fa-times"></i> Закрыть Позицию
+                                                    </button>
+                                                </form>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- Панель загрузки -->
+    <div id="loadingPanel" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 1040; align-items: center; justify-content: center;">
+        <div class="card" style="max-width: 500px; width: 90%;">
+            <div class="card-header">
+                <h6 class="mb-0">⏳ Загрузка бота</h6>
+            </div>
+            <div class="card-body text-center">
+                <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;">
+                    <span class="visually-hidden">Загрузка...</span>
+                </div>
+                <p id="loadingText" class="mb-2">Подготовка данных...</p>
+                <p id="loadingDetail" class="text-muted small mb-3"></p>
+                <div class="progress" style="height: 25px;">
+                    <div id="loadingBar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%;">0%</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- Уведомления -->
+    <div id="notifications" style="position: fixed; top: 20px; right: 20px; z-index: 1050;"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="app.js"></script>
+</body>
+</html> 
