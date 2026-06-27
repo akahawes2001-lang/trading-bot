@@ -9,11 +9,16 @@ class TradingBotUI {
         }
         
         this.updateInterval = null;
+        this.symbolsList = [];
+        this.pricesUpdateInterval = null;
         this.init();
     }
 
     async init() {
         await this.loadSymbols();
+        this.pricesUpdateInterval = setInterval(() => {
+            this.updatePrices();
+        }, 5000);
         this.setupEventListeners();
         this.startAutoUpdate();
         await this.updateStatus();
@@ -27,7 +32,9 @@ class TradingBotUI {
             
             if (data.success) {
                 const symbols = data.data;
+                this.symbolsList = symbols;
                 this.populateSymbolSelects(symbols);
+                this.displayAvailableSymbols(symbols);
             }
         } catch (error) {
             console.error('Ошибка загрузки символов:', error);
@@ -95,41 +102,87 @@ class TradingBotUI {
         const symbolsGrid = document.getElementById('symbolsGrid');
         if (!symbolsGrid) return;
 
+        this.symbolsList = symbols;
         let html = '';
-        
-        for (const symbol of symbols) {
-            try {
-                // Получаем текущую цену для символа
-                const response = await fetch(`${this.apiBase}/market/ticker/${symbol}`);
-                const data = await response.json();
-                const price = data.success ? data.data.price : 'N/A';
-                
+
+        try {
+            const response = await fetch(`${this.apiBase}/market/tickers`);
+            const data = await response.json();
+            const tickers = data.success && data.data ? data.data : {};
+
+            symbols.forEach(symbol => {
+                const ticker = tickers[symbol];
+                const price = ticker && typeof ticker.price === 'number' ? ticker.price.toFixed(4) : 'N/A';
+                const change24h = ticker && typeof ticker.change24h === 'number' ? ticker.change24h : null;
+                const changeClass = change24h === null ? 'text-muted' : (change24h >= 0 ? 'text-success' : 'text-danger');
+                const changeText = change24h === null ? '24ч: N/A' : `24ч: ${(change24h * 100).toFixed(2)}%`;
+
                 html += `
                     <div class="col-lg-3 col-md-4 col-sm-6 mb-3">
-                        <div class="symbol-card" onclick="tradingBotUI.selectSymbol('${symbol}')">
+                        <div class="symbol-card" data-symbol="${symbol}" onclick="tradingBotUI.selectSymbol('${symbol}')">
                             <div class="symbol-name">${symbol}</div>
                             <div class="symbol-price">$${price}</div>
+                            <div class="symbol-change ${changeClass}">${changeText}</div>
                             <div class="symbol-status active"></div>
                             <small class="text-muted">Нажмите для анализа</small>
                         </div>
                     </div>
                 `;
-            } catch (error) {
-                // Если не удалось получить цену, показываем без неё
+            });
+        } catch (error) {
+            console.error('Ошибка загрузки тикеров:', error);
+
+            symbols.forEach(symbol => {
                 html += `
                     <div class="col-lg-3 col-md-4 col-sm-6 mb-3">
-                        <div class="symbol-card" onclick="tradingBotUI.selectSymbol('${symbol}')">
+                        <div class="symbol-card" data-symbol="${symbol}" onclick="tradingBotUI.selectSymbol('${symbol}')">
                             <div class="symbol-name">${symbol}</div>
                             <div class="symbol-price">Цена загружается...</div>
+                            <div class="symbol-change text-muted">24ч: N/A</div>
                             <div class="symbol-status inactive"></div>
                             <small class="text-muted">Нажмите для анализа</small>
                         </div>
                     </div>
                 `;
-            }
+            });
         }
         
         symbolsGrid.innerHTML = html;
+    }
+
+    // Обновление только цен в существующих карточках без перерисовки сетки
+    async updatePrices() {
+        if (!this.symbolsList || this.symbolsList.length === 0) return;
+
+        try {
+            const response = await fetch(`${this.apiBase}/market/tickers`);
+            const data = await response.json();
+            if (!data.success || !data.data) return;
+
+            Object.entries(data.data).forEach(([symbol, ticker]) => {
+                const card = document.querySelector(`.symbol-card[data-symbol="${symbol}"]`);
+                if (!card) return;
+
+                const priceElement = card.querySelector('.symbol-price');
+                const changeElement = card.querySelector('.symbol-change');
+                const statusElement = card.querySelector('.symbol-status');
+
+                if (priceElement && typeof ticker.price === 'number') {
+                    priceElement.textContent = `$${ticker.price.toFixed(4)}`;
+                }
+
+                if (changeElement && typeof ticker.change24h === 'number') {
+                    changeElement.textContent = `24ч: ${(ticker.change24h * 100).toFixed(2)}%`;
+                    changeElement.className = `symbol-change ${ticker.change24h >= 0 ? 'text-success' : 'text-danger'}`;
+                }
+
+                if (statusElement) {
+                    statusElement.className = 'symbol-status active';
+                }
+            });
+        } catch (error) {
+            console.error('Ошибка обновления цен:', error);
+        }
     }
 
     // Выбор символа по клику

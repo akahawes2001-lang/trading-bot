@@ -202,6 +202,18 @@ class TradingBotServer {
       }
     });
 
+    router.get('/market/tickers', async (req, res) => {
+      try {
+        const symbols = this.bot.activeSymbols && this.bot.activeSymbols.length > 0
+          ? this.bot.activeSymbols
+          : config.symbols;
+        const tickers = await this.bot.api.getAllTickerPrices(symbols);
+        res.json({ success: true, data: tickers });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
     // Статистика
     router.get('/statistics', (req, res) => {
       try {

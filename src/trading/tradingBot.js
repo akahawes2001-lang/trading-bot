@@ -159,12 +159,12 @@ class TradingBot {
     this.analysisInterval = setInterval(async () => {
       if (!this.isRunning) return;
       try {
-        await this.performAnalysis();
+        await this.performAnalysis(true);
       } catch (error) {
         console.error('❌ Ошибка анализа:', error);
       }
     }, 5 * 60 * 1000);
-    this.performAnalysis();
+    this.performAnalysis(true);
   }
 
   async forcePerformAnalysis() {
