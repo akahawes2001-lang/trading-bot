@@ -156,15 +156,22 @@ class TradingBot {
   }
 
   startAnalysis() {
+    console.log('⏱️ Запуск интервала анализа (каждые 5 минут)');
     this.analysisInterval = setInterval(async () => {
+      console.log('⏰ Интервал сработал!');
       if (!this.isRunning) return;
       try {
         await this.performAnalysis(true);
       } catch (error) {
-        console.error('❌ Ошибка анализа:', error);
+        console.error('❌ Ошибка анализа в interval:', error);
+        console.error('❌ Stack trace:', error.stack);
       }
     }, 5 * 60 * 1000);
-    this.performAnalysis(true);
+    console.log('✅ Интервал анализа установлен');
+    this.performAnalysis(true).catch((error) => {
+      console.error('❌ Ошибка первичного анализа:', error);
+      console.error('❌ Stack trace:', error.stack);
+    });
   }
 
   async forcePerformAnalysis() {
@@ -172,6 +179,7 @@ class TradingBot {
   }
 
   async performAnalysis(force = false) {
+    console.log(`🔍 performAnalysis вызван, isRunning=${this.isRunning}`);
     if (!force) {
       const availableBalance = this.positionManager.getAvailableBalance();
       if (availableBalance <= 0) {

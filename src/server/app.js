@@ -125,6 +125,16 @@ class TradingBotServer {
       }
     });
 
+    router.post('/bot/forceAnalyze', async (req, res) => {
+      try {
+        const result = await this.bot.performAnalysis(true);
+        res.json({ success: true, result });
+      } catch (error) {
+        console.error('Ошибка forceAnalyze:', error);
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
     // Анализ рынка
     router.get('/analysis/:symbol', (req, res) => {
       try {
