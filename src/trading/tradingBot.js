@@ -70,8 +70,12 @@ class TradingBot {
       console.log('🛑 Остановка торгового бота...');
       this.isRunning = false;
       if (this.analysisInterval) {
+        console.log('🧹 Очистка интервала анализа...');
         clearInterval(this.analysisInterval);
         this.analysisInterval = null;
+        console.log('✅ Интервал анализа очищен');
+      } else {
+        console.log('ℹ️ Интервал анализа уже отсутствует');
       }
       if (this.symbolsUpdateInterval) {
         clearInterval(this.symbolsUpdateInterval);
@@ -159,12 +163,14 @@ class TradingBot {
     console.log('⏱️ Запуск интервала анализа (каждые 5 минут)');
     this.analysisInterval = setInterval(async () => {
       console.log('⏰ Интервал сработал!');
-      if (!this.isRunning) return;
+      if (!this.isRunning) {
+        console.log('⏸️ Интервал пропущен: isRunning = false');
+        return;
+      }
       try {
         await this.performAnalysis(true);
       } catch (error) {
-        console.error('❌ Ошибка анализа в interval:', error);
-        console.error('❌ Stack trace:', error.stack);
+        console.error('❌ Ошибка в интервале анализа:', error);
       }
     }, 5 * 60 * 1000);
     console.log('✅ Интервал анализа установлен');

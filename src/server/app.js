@@ -125,6 +125,22 @@ class TradingBotServer {
       }
     });
 
+    router.get('/bot/intervalStatus', (req, res) => {
+      try {
+        const hasInterval = this.bot.analysisInterval !== null && this.bot.analysisInterval !== undefined;
+        res.json({
+          success: true,
+          data: {
+            hasInterval,
+            isRunning: this.bot.isRunning,
+            intervalActive: hasInterval && this.bot.isRunning
+          }
+        });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
     router.post('/bot/forceAnalyze', async (req, res) => {
       try {
         const result = await this.bot.performAnalysis(true);
