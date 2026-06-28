@@ -22,11 +22,18 @@ class TradingBot {
 
     this.activeSymbols = [];
     this.symbolsUpdateInterval = null;
+    this.lastNoBalanceNotificationAt = 0;
 
     this.numberOfPositions = config.numberOfPositions;
     this.minVolume = config.minVolume;
     this.topSymbolsCount = config.topSymbolsCount;
     this.useDynamicSymbols = config.useDynamicSymbols;
+    this.topPositiveCount = config.topPositiveCount;
+    this.topNegativeCount = config.topNegativeCount;
+    this.maxSymbolsTotal = config.maxSymbolsTotal;
+
+    // Telegram-уведомления — устанавливается извне (index.js)
+    this.telegram = null;
   }
 
   async start() {
@@ -70,16 +77,18 @@ class TradingBot {
       console.log('🛑 Остановка торгового бота...');
       this.isRunning = false;
       if (this.analysisInterval) {
-        console.log('🧹 Очистка интервала анализа...');
         clearInterval(this.analysisInterval);
         this.analysisInterval = null;
-        console.log('✅ Интервал анализа очищен');
-      } else {
-        console.log('ℹ️ Интервал анализа уже отсутствует');
+        console.log('🔄 Интервал анализа очищен');
       }
       if (this.symbolsUpdateInterval) {
         clearInterval(this.symbolsUpdateInterval);
         this.symbolsUpdateInterval = null;
+      }
+      if (this.positionsUpdateInterval) {
+        clearInterval(this.positionsUpdateInterval);
+        this.positionsUpdateInterval = null;
+        console.log('🔄 Интервал обновления позиций очищен');
       }
       console.log('✅ Торговый бот остановлен');
       return { success: true, message: 'Бот остановлен' };
@@ -111,23 +120,61 @@ class TradingBot {
         console.warn('⚠️ Не удалось получить список символов, оставляем старый');
         return;
       }
-      const volumes = await this.api.getTickersVolume(allSymbols);
-      if (!volumes) {
-        console.warn('⚠️ Не удалось получить объёмы, оставляем старый');
+
+      const tickers = await this.api.getAllTickerPrices(allSymbols);
+      if (!tickers) {
+        console.warn('⚠️ Не удалось получить тикеры, оставляем старый');
         return;
       }
-      const filtered = allSymbols
-        .filter(sym => (volumes[sym] || 0) >= this.minVolume)
-        .sort((a, b) => (volumes[b] || 0) - (volumes[a] || 0))
-;
+
+      const filtered = allSymbols.filter(sym => {
+        const volume = tickers[sym]?.volume24h || 0;
+        return volume >= this.minVolume;
+      });
 
       if (filtered.length === 0) {
-        console.warn('⚠️ Нет символов, удовлетворяющих условиям, оставляем старый');
+        console.warn('⚠️ Нет символов, удовлетворяющих объёму, оставляем старый');
         return;
       }
-      this.activeSymbols = filtered;
-      console.log(`✅ Список символов обновлён: ${this.activeSymbols.length} символов`);
-      console.log('📊 Топ-10 по объёму:', this.activeSymbols.slice(0, 10).join(', '));
+
+      const sortedByChange = filtered.sort((a, b) => {
+        const changeA = tickers[a]?.change24h || 0;
+        const changeB = tickers[b]?.change24h || 0;
+        return changeB - changeA;
+      });
+
+      const topPositive = sortedByChange.slice(0, this.topPositiveCount);
+      const topNegative = sortedByChange.slice(-this.topNegativeCount).reverse();
+
+      // Объединяем, убираем дубликаты
+      let selected = [...new Set([...topPositive, ...topNegative])];
+
+      // Если объединённый список превышает лимит — обрезаем,
+      // сохраняя самые волатильные (первые после сортировки по |change24h|)
+      if (selected.length > this.maxSymbolsTotal) {
+        // Сортируем выбранные по модулю изменения (волатильности)
+        selected.sort((a, b) => {
+          const absA = Math.abs(tickers[a]?.change24h || 0);
+          const absB = Math.abs(tickers[b]?.change24h || 0);
+          return absB - absA;
+        });
+        selected = selected.slice(0, this.maxSymbolsTotal);
+        console.log(`⚠️ Лимит символов (${this.maxSymbolsTotal}), выбраны ${selected.length} самых волатильных`);
+      }
+
+      if (selected.length === 0) {
+        console.warn('⚠️ Не удалось выбрать символы, оставляем старый');
+        return;
+      }
+
+      this.activeSymbols = selected;
+      console.log(`✅ Список символов обновлён: ${this.activeSymbols.length} символов (из них ${topPositive.length} выросших + ${topNegative.length} упавших, после слияния и дедупликации)`);
+      console.log('📊 Всего отфильтровано по объёму:', filtered.length);
+      console.log('📈 Топ выросших:', topPositive.join(', '));
+      console.log('📉 Топ упавших:', topNegative.join(', '));
+      if (this.activeSymbols.length > 10) {
+        console.log('📋 Первые 10:', this.activeSymbols.slice(0, 10).join(', '));
+      }
     } catch (error) {
       console.error('❌ Ошибка обновления символов:', error);
     }
@@ -168,16 +215,14 @@ class TradingBot {
         return;
       }
       try {
-        await this.performAnalysis(true);
+        await this.performAnalysis(false);
       } catch (error) {
         console.error('❌ Ошибка в интервале анализа:', error);
       }
     }, 5 * 60 * 1000);
     console.log('✅ Интервал анализа установлен');
-    this.performAnalysis(true).catch((error) => {
-      console.error('❌ Ошибка первичного анализа:', error);
-      console.error('❌ Stack trace:', error.stack);
-    });
+    // Первый запуск сразу, но только при наличии свободного баланса
+    this.performAnalysis(false);
   }
 
   async forcePerformAnalysis() {
@@ -186,13 +231,12 @@ class TradingBot {
 
   async performAnalysis(force = false) {
     console.log(`🔍 performAnalysis вызван, isRunning=${this.isRunning}`);
-    if (!force) {
-      const availableBalance = this.positionManager.getAvailableBalance();
-      if (availableBalance <= 0) {
-        console.log('[Пропуск] Нет свободных средств');
-        await this.updatePositions();
-        return;
-      }
+    const availableBalance = this.positionManager.getAvailableBalance();
+    if (!force && availableBalance <= 0) {
+      console.log('[Пропуск] Нет свободных средств');
+      await this.notifyNoBalance();
+      await this.updatePositions();
+      return { skipped: true, reason: 'NO_BALANCE' };
     }
     console.log('🔍 Выполнение анализа рынка...');
     const symbols = this.activeSymbols;
@@ -317,7 +361,7 @@ class TradingBot {
         if (orderResult) {
           console.log(`✅ Ордер успешно размещён: ${signal.type} ${symbol} по рынку, qty=${qty.toFixed(4)}`);
           // Добавляем позицию в менеджер для отслеживания (чтобы бот знал о ней)
-          this.positionManager.addPosition({
+          const addResult = this.positionManager.addPosition({
             symbol,
             side: signal.type,
             entryPrice: currentPrice,
@@ -325,6 +369,19 @@ class TradingBot {
             orderId: orderResult.orderId,
             timestamp: Date.now()
           });
+          if (addResult.success) {
+            console.log(`📤 Telegram: отправка уведомления об открытии позиции ${symbol}`);
+            if (this.telegram) {
+              try {
+                await this.telegram.notifyPositionOpened(addResult.position, signal);
+                console.log('✅ Уведомление об открытии отправлено');
+              } catch (tgErr) {
+                console.error('❌ Ошибка отправки уведомления об открытии:', tgErr.message);
+              }
+            } else {
+              console.log('⚠️ Telegram не инициализирован, уведомление не отправлено');
+            }
+          }
         } else {
           console.log(`❌ Не удалось разместить ордер для ${symbol}`);
         }
@@ -337,7 +394,17 @@ class TradingBot {
           console.log(`💰 Размер позиции: ${result.position.size.toFixed(2)} (USDT)`);
           console.log(`🛑 Стоп-лосс: ${result.position.stopLoss?.toFixed(4) || 'не задан'}`);
           console.log(`🎯 Тейк-профит: ${result.position.takeProfit?.toFixed(4) || 'не задан'}`);
-          if (this.telegram) this.telegram.notifyPositionOpened(result.position, signal);
+          console.log(`📤 Telegram: отправка уведомления об открытии позиции ${symbol} (симуляция)`);
+          if (this.telegram) {
+            try {
+              await this.telegram.notifyPositionOpened(result.position, signal);
+              console.log('✅ Уведомление об открытии отправлено');
+            } catch (tgErr) {
+              console.error('❌ Ошибка отправки уведомления об открытии:', tgErr.message);
+            }
+          } else {
+            console.log('⚠️ Telegram не инициализирован, уведомление не отправлено');
+          }
         } else {
           console.log(`❌ Ошибка открытия позиции: ${result.error}`);
         }
@@ -355,7 +422,16 @@ class TradingBot {
       if (!this.isRunning) return;
       await this.updatePositions();
     }, 5 * 1000);
-    console.log('⏱ Запущено обновление позиций каждые 15 секунд');
+    console.log('⏱ Запущено обновление текущих цен открытых позиций каждые 5 секунд');
+  }
+
+  async notifyNoBalance() {
+    const now = Date.now();
+    if (now - this.lastNoBalanceNotificationAt < 5 * 60 * 1000) return;
+    this.lastNoBalanceNotificationAt = now;
+    if (this.telegram && this.telegram.notifyNoBalance) {
+      await this.telegram.notifyNoBalance(this.positionManager.getStatistics());
+    }
   }
 
   // ===================== КОНЕЦ ИЗМЕНЁННОГО МЕТОДА =====================
@@ -378,13 +454,23 @@ class TradingBot {
             console.error(`❌ Ошибка получения цены ${symbol}:`, error);
           }
         }
-      }      const closedPositions = this.positionManager.updatePositions(marketData);
+      }
+      const closedPositions = this.positionManager.updatePositions(marketData);
       if (closedPositions.length > 0) {
         console.log(`🔒 Закрыто позиций: ${closedPositions.length}`);
-        closedPositions.forEach(pos => {
+        for (const pos of closedPositions) {
           console.log(`📊 ${pos.symbol}: ${pos.closeReason}, PnL: ${pos.pnl.toFixed(2)}`);
-          if (this.telegram) this.telegram.notifyPositionClosed(pos, pos.closeReason);
-        });
+          if (this.telegram) {
+            try {
+              await this.telegram.notifyPositionClosed(pos, pos.closeReason);
+              console.log(`✅ Уведомление о закрытии ${pos.symbol} отправлено`);
+            } catch (tgErr) {
+              console.error(`❌ Ошибка отправки уведомления о закрытии ${pos.symbol}:`, tgErr.message);
+            }
+          } else {
+            console.log('⚠️ Telegram не инициализирован, уведомление о закрытии не отправлено');
+          }
+        }
       }
     } catch (error) {
       console.error('❌ Ошибка обновления позиций:', error);
@@ -439,14 +525,19 @@ class TradingBot {
   }
 
   async manualClosePosition(symbol) {
+    let result;
     try {
       const ticker = await this.api.getTickerPrice(symbol);
       const currentPrice = ticker ? ticker.price : null;
-      return this.positionManager.closePosition(symbol, 'MANUAL', currentPrice);
+      result = this.positionManager.closePosition(symbol, 'MANUAL', currentPrice);
     } catch (error) {
       console.error('Error getting price for ' + symbol + ':', error);
-      return this.positionManager.closePosition(symbol, 'MANUAL');
+      result = this.positionManager.closePosition(symbol, 'MANUAL');
     }
+    if (result.success && this.telegram && this.telegram.notifyPositionClosed) {
+      await this.telegram.notifyPositionClosed(result.position, result.position.closeReason || 'MANUAL');
+    }
+    return result;
   }
 
   resetDemoBalance() {

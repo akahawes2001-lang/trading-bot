@@ -1,4 +1,5 @@
-const { TelegramBot } = require('node-telegram-bot-api');
+const TelegramApi = require('node-telegram-bot-api');
+const TelegramBot = TelegramApi.TelegramBot || TelegramApi;
 
 class TelegramNotifier {
   constructor(botInstance) {
@@ -10,6 +11,9 @@ class TelegramNotifier {
   }
 
   async init() {
+    console.log('🔧 Инициализация Telegram-бота...');
+    console.log(`   TOKEN: ${this.token ? 'установлен (скрыт)' : 'ОТСУТСТВУЕТ'}`);
+    console.log(`   CHAT_ID: ${this.chatId || 'ОТСУТСТВУЕТ'}`);
     if (!this.token) {
       console.log('TELEGRAM_BOT_TOKEN not set, Telegram disabled');
       return false;
@@ -18,13 +22,11 @@ class TelegramNotifier {
       this.bot = new TelegramBot(this.token, { polling: true });
       this.setupCallbacks();
       this.isInitialized = true;
-      this.bot.on('message', (msg) => {
-        if (!this.chatId && msg.chat && msg.chat.id) {
-          this.chatId = msg.chat.id.toString();
-          console.log('Telegram chat ID set to:', this.chatId);
-          this.sendMainMenu();
-        }
-      });
+      console.log('✅ Telegram бот инициализирован, isInitialized =', this.isInitialized);
+      this.bot.on('message', (msg) => this.captureChatId(msg));
+      if (!this.chatId) {
+        await this.resolveChatIdFromUpdates();
+      }
       if (this.chatId) {
         await this.sendMainMenu();
       } else {
@@ -40,7 +42,10 @@ class TelegramNotifier {
 
 
   sendMainMenu() {
-    if (!this.bot || !this.chatId) return;
+    if (!this.bot || !this.chatId) {
+      console.log('⚠️ sendMainMenu пропущен: bot или chatId отсутствуют');
+      return;
+    }
     this.bot.sendMessage(this.chatId,
       '\u{1F916} \u041C\u0435\u043D\u044E \u0443\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u0438\u044F:\n\u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0435:',
       {
@@ -64,18 +69,48 @@ class TelegramNotifier {
     );
   }
 
+  captureChatId(msg) {
+    if (!this.chatId && msg && msg.chat && msg.chat.id) {
+      this.chatId = msg.chat.id.toString();
+      console.log('Telegram chat ID set to:', this.chatId);
+      this.sendMainMenu();
+    }
+  }
+
+  async resolveChatIdFromUpdates() {
+    if (!this.bot || this.chatId) return;
+    try {
+      const updates = await this.bot.getUpdates({ limit: 10, timeout: 0 });
+      const latestMessageUpdate = [...updates].reverse().find((u) => u.message && u.message.chat && u.message.chat.id);
+      if (latestMessageUpdate) {
+        this.chatId = latestMessageUpdate.message.chat.id.toString();
+        console.log('Telegram chat ID restored from updates:', this.chatId);
+      }
+    } catch (error) {
+      console.warn('Telegram: не удалось автоматически получить chat ID:', error.message);
+    }
+  }
+
   async sendMessage(text) {
+    console.log(`📤 sendMessage вызван, chatId=${this.chatId}, isInitialized=${this.isInitialized}`);
     if (!this.bot || !this.chatId) return false;
     try {
-      await this.bot.sendMessage(this.chatId, text);
+      await this.bot.sendMessage(this.chatId, text, { parse_mode: 'Markdown' });
       return true;
     } catch (error) {
       console.error('Telegram send error:', error.message);
-      return false;
+      try {
+        await this.bot.sendMessage(this.chatId, text.replace(/[*_`\[]/g, ''));
+        return true;
+      } catch (fallbackError) {
+        console.error('Telegram fallback send error:', fallbackError.message);
+        return false;
+      }
     }
   }
 
   async sendWithMenu(text) {
+    console.log(`📤 sendWithMenu вызван, chatId=${this.chatId}, isInitialized=${this.isInitialized}`);
     if (!this.bot || !this.chatId) return false;
     try {
       await this.bot.sendMessage(this.chatId, text, {
@@ -95,8 +130,8 @@ class TelegramNotifier {
   setupCallbacks() {
     if (!this.bot) return;
 
-    this.bot.onText(/\/start/, () => this.sendMainMenu());
-    this.bot.onText(/\/menu/, () => this.sendMainMenu());
+    this.bot.onText(/\/start/, (msg) => { this.captureChatId(msg); this.sendMainMenu(); });
+    this.bot.onText(/\/menu/, (msg) => { this.captureChatId(msg); this.sendMainMenu(); });
     this.bot.onText(/\/start_bot/, () => this.handleStartBot());
     this.bot.onText(/\/stop_bot/, () => this.handleStopBot());
     this.bot.onText(/\/balance/, () => this.handleBalance());
@@ -132,11 +167,12 @@ class TelegramNotifier {
   }
 
   async handleClosePosition(symbol) {
+    console.log('handleClosePosition:', symbol);
     if (!this.botInstance) {
       await this.sendWithMenu('❌ Бот не инициализирован');
       return;
     }
-    const result = this.botInstance.manualClosePosition(symbol);
+    const result = await this.botInstance.manualClosePosition(symbol);
     if (result && result.success) {
       await this.sendWithMenu('✅ Позиция по ' + symbol + ' закрыта!\n\nБаланс освободился, бот будет искать новые сделки.');
     } else {
@@ -145,7 +181,11 @@ class TelegramNotifier {
   }
 
   async handleStartBot() {
-    if (!this.botInstance) return;
+    console.log('handleStartBot')
+    if (!this.botInstance) {
+      await this.sendWithMenu('❌ Бот не инициализирован');
+      return;
+    }
     const r = await this.botInstance.start();
     await this.sendWithMenu(r.success
       ? '\u2705 \u0411\u043E\u0442 \u0437\u0430\u043F\u0443\u0449\u0435\u043D!'
@@ -153,7 +193,11 @@ class TelegramNotifier {
   }
 
   async handleStopBot() {
-    if (!this.botInstance) return;
+    console.log('handleStopBot')
+    if (!this.botInstance) {
+      await this.sendWithMenu('❌ Бот не инициализирован');
+      return;
+    }
     const r = this.botInstance.stop();
     await this.sendWithMenu(r.success
       ? '\u23F9 \u0411\u043E\u0442 \u043E\u0441\u0442\u0430\u043D\u043E\u0432\u043B\u0435\u043D'
@@ -161,7 +205,11 @@ class TelegramNotifier {
   }
 
   async handleBalance() {
-    if (!this.botInstance) return;
+    console.log('handleBalance')
+    if (!this.botInstance) {
+      await this.sendWithMenu('❌ Бот не инициализирован');
+      return;
+    }
     const s = this.botInstance.getStatus().statistics;
     await this.sendWithMenu(
       '\u{1F4B0} *\u0411\u0430\u043B\u0430\u043D\u0441*\n\n' +
@@ -172,7 +220,11 @@ class TelegramNotifier {
   }
 
   async handleRating() {
-    if (!this.botInstance) return;
+    console.log('handleRating')
+    if (!this.botInstance) {
+      await this.sendWithMenu('❌ Бот не инициализирован');
+      return;
+    }
     const s = this.botInstance.getStatus().statistics;
     const pnl = s.totalPnL || 0;
     const emoji = pnl >= 0 ? '\u{1F7E2}' : '\u{1F534}';
@@ -187,6 +239,7 @@ class TelegramNotifier {
   }
 
   async handleAnalyze() {
+    console.log('handleAnalyze')
     if (!this.botInstance) {
       await this.sendWithMenu('\u274C \u0411\u043E\u0442 \u043D\u0435 \u0438\u043D\u0438\u0446\u0438\u0430\u043B\u0438\u0437\u0438\u0440\u043E\u0432\u0430\u043D');
       return;
@@ -231,6 +284,7 @@ class TelegramNotifier {
   }
 
   async handlePositions() {
+    console.log('handlePositions')
     if (!this.botInstance) {
       await this.sendWithMenu('\u274C \u0411\u043E\u0442 \u043D\u0435 \u0438\u043D\u0438\u0446\u0438\u0430\u043B\u0438\u0437\u0438\u0440\u043E\u0432\u0430\u043D');
       return;
@@ -257,6 +311,7 @@ class TelegramNotifier {
   }
 
   async notifyPositionOpened(position, signal) {
+    console.log('notifyPositionOpened:', position.symbol, position.type);
     if (!this.isInitialized) return;
     if (!this.chatId) return;
     const emoji = position.type === 'LONG' ? '\u{1F7E2}' : '\u{1F534}';
@@ -274,6 +329,7 @@ class TelegramNotifier {
   }
 
   async notifyPositionClosed(position, reason) {
+    console.log('notifyPositionClosed:', position.symbol, reason);
     if (!this.isInitialized) return;
     if (!this.chatId) return;
     const isProfit = (position.pnl || 0) >= 0;
@@ -289,6 +345,32 @@ class TelegramNotifier {
       '\u2022 \u041F\u0440\u0438\u0447\u0438\u043D\u0430: ' + (reason || 'N/A') + '\n';
     if (st) m += '\u2022 \u0411\u0430\u043B\u0430\u043D\u0441: $' + (st.totalBalance || 0).toFixed(2) + '\n';
     await this.sendMessage(m);
+  }
+
+  async notifyBotStarted(statistics) {
+    if (!this.isInitialized || !this.chatId) return false;
+    const s = statistics || (this.botInstance ? this.botInstance.getStatus().statistics : {});
+    return this.sendMessage(
+      '✅ *Бот запущен*\n\n' +
+      '• Telegram-бот активен\n' +
+      '• Торговый бот активен\n' +
+      '• Анализ рынка: каждые 5 минут\n' +
+      '• Обновление цен открытых позиций: каждые 5 секунд\n' +
+      '• Стартовый бюджет: *$' + (s.totalBalance || 0).toFixed(2) + '*\n' +
+      '• Доступно: *$' + (s.availableBalance || 0).toFixed(2) + '*'
+    );
+  }
+
+  async notifyNoBalance(statistics) {
+    if (!this.isInitialized || !this.chatId) return false;
+    const s = statistics || (this.botInstance ? this.botInstance.getStatus().statistics : {});
+    return this.sendMessage(
+      '⚠️ *Нет свободного баланса*\n\n' +
+      'Анализ рынка временно пропущен, новые сделки не открываются.\n' +
+      '• Общий баланс: *$' + (s.totalBalance || 0).toFixed(2) + '*\n' +
+      '• Доступно: *$' + (s.availableBalance || 0).toFixed(2) + '*\n' +
+      '• Активных позиций: ' + (s.activePositions || 0) + ' / ' + (s.maxPositions || 0)
+    );
   }
 
   stop() {

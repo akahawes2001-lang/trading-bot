@@ -6,7 +6,7 @@ const config = {
 
   // Демо-настройки
   demo: {
-    balance: parseFloat(process.env.DEMO_BALANCE) || 10000,
+    balance: parseFloat(process.env.DEMO_BALANCE) || 100,
     riskPercent: parseFloat(process.env.RISK_PERCENT) || 2,   // переопределяется
     maxPositions: parseInt(process.env.MAX_POSITIONS) || 3    // переопределяется
   },
@@ -36,6 +36,9 @@ const config = {
   minVolume: parseFloat(process.env.MIN_VOLUME) || 1000000,
   topSymbolsCount: parseInt(process.env.TOP_SYMBOLS_COUNT) || 20,
   useDynamicSymbols: process.env.USE_DYNAMIC_SYMBOLS !== 'false',
+  topPositiveCount: parseInt(process.env.TOP_POSITIVE_COUNT) || 20,
+  topNegativeCount: parseInt(process.env.TOP_NEGATIVE_COUNT) || 20,
+  maxSymbolsTotal: parseInt(process.env.MAX_SYMBOLS_TOTAL) || 50,
 
   // НОВЫЙ ПАРАМЕТР: отправлять реальные ордера даже в демо-режиме
   sendOrdersInDemo: process.env.DEMO_SEND_REAL_ORDERS === 'true',
