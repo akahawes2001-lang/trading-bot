@@ -6,8 +6,10 @@ class TelegramNotifier {
     this.botInstance = botInstance;
     this.token = process.env.TELEGRAM_BOT_TOKEN;
     this.chatId = process.env.TELEGRAM_CHAT_ID;
+    this.proxy = process.env.TELEGRAM_PROXY || process.env.https_proxy || process.env.HTTPS_PROXY || null;
     this.bot = null;
     this.isInitialized = false;
+    this._reconnectTimer = null;
   }
 
   async init() {
@@ -19,7 +21,18 @@ class TelegramNotifier {
       return false;
     }
     try {
-      this.bot = new TelegramBot(this.token, { polling: true });
+      const botOptions = { polling: { interval: 2000, params: { timeout: 30 } } };
+      if (this.proxy) {
+        console.log('   PROXY: ' + this.proxy);
+        try {
+          const HttpsProxyAgent = require('https-proxy-agent');
+          botOptions.request = { agent: HttpsProxyAgent(this.proxy) };
+        } catch (e) {
+          console.log('   proxy package not installed, trying env HTTP_PROXY...');
+          process.env.HTTPS_PROXY = this.proxy;
+        }
+      }
+      this.bot = new TelegramBot(this.token, botOptions);
       this.setupCallbacks();
       this.isInitialized = true;
       console.log('✅ Telegram бот инициализирован, isInitialized =', this.isInitialized);
@@ -139,6 +152,28 @@ class TelegramNotifier {
     this.bot.onText(/\/analyze/, () => this.handleAnalyze());
     this.bot.onText(/\/positions/, () => this.handlePositions());
     this.bot.onText(/\/close (.+)/, (msg, match) => this.handleClosePosition(match[1]));
+
+    // Авто-переподключение при ошибках polling
+    this.bot.on('polling_error', (error) => {
+      console.error('Telegram polling error:', error.message);
+      if (error.code === 'EFATAL' || error.message.includes('timeout') || error.message.includes('ECONNRESET')) {
+        // Планируем переподключение через 10 секунд
+        if (!this._reconnectTimer) {
+          console.log('Telegram: auto-reconnect scheduled in 10s...');
+          this._reconnectTimer = setTimeout(async () => {
+            this._reconnectTimer = null;
+            console.log('Telegram: reconnecting...');
+            try {
+              await this.bot.stopPolling();
+              await this.bot.startPolling();
+              console.log('Telegram: reconnected successfully');
+            } catch (e) {
+              console.error('Telegram: reconnect failed, watchdog will retry:', e.message);
+            }
+          }, 10000);
+        }
+      }
+    });
 
     this.bot.on('callback_query', async (query) => {
       const data = query.data;
@@ -374,7 +409,13 @@ class TelegramNotifier {
   }
 
   stop() {
-    if (this.bot) this.bot.stopPolling();
+    if (this._reconnectTimer) {
+      clearTimeout(this._reconnectTimer);
+      this._reconnectTimer = null;
+    }
+    if (this.bot) {
+      try { this.bot.stopPolling(); } catch (e) {}
+    }
   }
 }
 
