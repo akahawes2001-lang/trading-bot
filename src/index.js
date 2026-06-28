@@ -9,15 +9,16 @@ const config = require('./config/config');
 const server = new TradingBotServer();
 let telegram = null;
 
-// Обработка необработанных исключений
+// Обработка необработанных исключений — не выходим, продолжаем работу
 process.on('uncaughtException', (error) => {
-  console.error('❌ Необработанное исключение:', error);
-  process.exit(1);
+  console.error('❌ Необработанное исключение (продолжаем работу):', error.message);
+  console.error(error.stack);
+  // Не выходим — бот восстановится на следующем цикле
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-  console.error('❌ Необработанное отклонение промиса:', reason);
-  process.exit(1);
+  console.error('❌ Необработанное отклонение промиса (продолжаем работу):', reason?.message || reason);
+  // Не выходим — продолжаем работу
 });
 
 // Graceful shutdown
@@ -79,4 +80,34 @@ async function main() {
   }
 }
 
-main(); 
+main();
+
+// ========== WATCHDOG: мониторинг здоровья бота ==========
+setInterval(() => {
+  if (!server.bot) return;
+
+  // Проверяем, работает ли интервал анализа
+  if (server.bot.isRunning && !server.bot.analysisInterval) {
+    console.log('⚠️ Watchdog: analysisInterval отсутствует, перезапускаем анализ...');
+    server.bot.startAnalysis();
+  }
+
+  // Проверяем интервал обновления позиций
+  if (server.bot.isRunning && !server.bot.positionsUpdateInterval) {
+    console.log('⚠️ Watchdog: positionsUpdateInterval отсутствует, перезапускаем...');
+    server.bot.startPositionsUpdate();
+  }
+
+  // Проверяем Telegram
+  if (telegram && !telegram.isInitialized) {
+    console.log('⚠️ Watchdog: Telegram не инициализирован, пробуем переинициализировать...');
+    telegram.init().then(ok => {
+      if (ok) {
+        server.bot.telegram = telegram;
+        console.log('✅ Watchdog: Telegram восстановлен');
+      }
+    }).catch(e => console.error('❌ Watchdog: ошибка восстановления Telegram:', e.message));
+  }
+}, 30000); // Проверка каждые 30 секунд
+
+console.log('🐕 Watchdog активен (проверка каждые 30 секунд)');

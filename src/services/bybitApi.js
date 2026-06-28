@@ -227,6 +227,38 @@ class BybitAPI {
   }
 
 
+  // ========== RETRY LOGIC для устойчивости к сбоям интернета ==========
+  async _requestWithRetry(fn, retries = 3, delay = 2000) {
+    let lastError;
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        return await fn();
+      } catch (error) {
+        lastError = error;
+        const isNetworkError = !error.response ||
+          error.code === 'ECONNRESET' ||
+          error.code === 'ETIMEDOUT' ||
+          error.code === 'ENETUNREACH' ||
+          error.code === 'ECONNABORTED' ||
+          (error.message && (
+            error.message.includes('timeout') ||
+            error.message.includes('network') ||
+            error.message.includes('Rate Limit') ||
+            error.message.includes('socket')
+          ));
+
+        if (!isNetworkError || attempt === retries) {
+          throw error;
+        }
+
+        const wait = delay * Math.pow(1.5, attempt - 1);
+        console.log('🔄 Сетевая ошибка, попытка ' + attempt + '/' + retries + ' через ' + wait + 'ms: ' + (error.message || error));
+        await new Promise(resolve => setTimeout(resolve, wait));
+      }
+    }
+    throw lastError;
+  }
+
   // ----- Методы для динамического обновления символов (публичные) -----
 
   async getActiveLinearSymbols() {
