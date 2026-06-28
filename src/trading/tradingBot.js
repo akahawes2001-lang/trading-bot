@@ -28,9 +28,9 @@ class TradingBot {
     this.minVolume = config.minVolume;
     this.topSymbolsCount = config.topSymbolsCount;
     this.useDynamicSymbols = config.useDynamicSymbols;
-    this.topPositiveCount = config.topPositiveCount;
-    this.topNegativeCount = config.topNegativeCount;
-    this.maxSymbolsTotal = config.maxSymbolsTotal;
+    // this.topPositiveCount = config.topPositiveCount;   // больше не используется
+    // this.topNegativeCount = config.topNegativeCount;   // больше не используется
+    // this.maxSymbolsTotal = config.maxSymbolsTotal;     // больше не используется
 
     // Telegram-уведомления — устанавливается извне (index.js)
     this.telegram = null;
@@ -115,66 +115,35 @@ class TradingBot {
   async updateSymbols() {
     console.log('🔄 Обновление списка символов...');
     try {
+      // 1. Получаем все активные USDT-символы
       const allSymbols = await this.api.getActiveLinearSymbols();
       if (!allSymbols || allSymbols.length === 0) {
         console.warn('⚠️ Не удалось получить список символов, оставляем старый');
         return;
       }
 
-      const tickers = await this.api.getAllTickerPrices(allSymbols);
-      if (!tickers) {
-        console.warn('⚠️ Не удалось получить тикеры, оставляем старый');
+      // 2. Получаем тикеры (объём за 24ч)
+      const volumes = await this.api.getTickersVolume(allSymbols);
+      if (!volumes) {
+        console.warn('⚠️ Не удалось получить объёмы, оставляем старый');
         return;
       }
 
-      const filtered = allSymbols.filter(sym => {
-        const volume = tickers[sym]?.volume24h || 0;
-        return volume >= this.minVolume;
-      });
+      // 3. Фильтруем по объёму (minVolume) и сортируем по убыванию
+      const filtered = allSymbols
+        .filter(sym => (volumes[sym] || 0) >= this.minVolume)
+        .sort((a, b) => (volumes[b] || 0) - (volumes[a] || 0));
 
       if (filtered.length === 0) {
         console.warn('⚠️ Нет символов, удовлетворяющих объёму, оставляем старый');
         return;
       }
 
-      const sortedByChange = filtered.sort((a, b) => {
-        const changeA = tickers[a]?.change24h || 0;
-        const changeB = tickers[b]?.change24h || 0;
-        return changeB - changeA;
-      });
+      // 4. Сохраняем все отфильтрованные символы (без обрезания до 20)
+      this.activeSymbols = filtered;
 
-      const topPositive = sortedByChange.slice(0, this.topPositiveCount);
-      const topNegative = sortedByChange.slice(-this.topNegativeCount).reverse();
-
-      // Объединяем, убираем дубликаты
-      let selected = [...new Set([...topPositive, ...topNegative])];
-
-      // Если объединённый список превышает лимит — обрезаем,
-      // сохраняя самые волатильные (первые после сортировки по |change24h|)
-      if (selected.length > this.maxSymbolsTotal) {
-        // Сортируем выбранные по модулю изменения (волатильности)
-        selected.sort((a, b) => {
-          const absA = Math.abs(tickers[a]?.change24h || 0);
-          const absB = Math.abs(tickers[b]?.change24h || 0);
-          return absB - absA;
-        });
-        selected = selected.slice(0, this.maxSymbolsTotal);
-        console.log(`⚠️ Лимит символов (${this.maxSymbolsTotal}), выбраны ${selected.length} самых волатильных`);
-      }
-
-      if (selected.length === 0) {
-        console.warn('⚠️ Не удалось выбрать символы, оставляем старый');
-        return;
-      }
-
-      this.activeSymbols = selected;
-      console.log(`✅ Список символов обновлён: ${this.activeSymbols.length} символов (из них ${topPositive.length} выросших + ${topNegative.length} упавших, после слияния и дедупликации)`);
-      console.log('📊 Всего отфильтровано по объёму:', filtered.length);
-      console.log('📈 Топ выросших:', topPositive.join(', '));
-      console.log('📉 Топ упавших:', topNegative.join(', '));
-      if (this.activeSymbols.length > 10) {
-        console.log('📋 Первые 10:', this.activeSymbols.slice(0, 10).join(', '));
-      }
+      console.log(`✅ Список символов обновлён: ${this.activeSymbols.length} символов`);
+      console.log('📊 Топ-10 по объёму:', this.activeSymbols.slice(0, 10).join(', '));
     } catch (error) {
       console.error('❌ Ошибка обновления символов:', error);
     }

@@ -33,12 +33,14 @@ const config = {
 
   // Управление капиталом и динамические символы
   numberOfPositions: parseInt(process.env.NUMBER_OF_POSITIONS) || 10,
-  minVolume: parseFloat(process.env.MIN_VOLUME) || 1000000,
+  minVolume: parseFloat(process.env.MIN_VOLUME) || 5000000,
   topSymbolsCount: parseInt(process.env.TOP_SYMBOLS_COUNT) || 20,
   useDynamicSymbols: process.env.USE_DYNAMIC_SYMBOLS !== 'false',
-  topPositiveCount: parseInt(process.env.TOP_POSITIVE_COUNT) || 20,
-  topNegativeCount: parseInt(process.env.TOP_NEGATIVE_COUNT) || 20,
-  maxSymbolsTotal: parseInt(process.env.MAX_SYMBOLS_TOTAL) || 50,
+  // topPositiveCount/topNegativeCount/maxSymbolsTotal — больше не используются
+  // Сортировка теперь только по объёму (см. updateSymbols в tradingBot.js)
+  // topPositiveCount: parseInt(process.env.TOP_POSITIVE_COUNT) || 20,
+  // topNegativeCount: parseInt(process.env.TOP_NEGATIVE_COUNT) || 20,
+  // maxSymbolsTotal: parseInt(process.env.MAX_SYMBOLS_TOTAL) || 50,
 
   // НОВЫЙ ПАРАМЕТР: отправлять реальные ордера даже в демо-режиме
   sendOrdersInDemo: process.env.DEMO_SEND_REAL_ORDERS === 'true',
