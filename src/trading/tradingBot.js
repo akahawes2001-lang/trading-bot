@@ -208,10 +208,15 @@ class TradingBot {
 
   startAnalysis() {
     console.log('⏱️ Запуск интервала анализа (каждые 5 минут)');
+    console.log(`   isRunning=${this.isRunning}, analysisInterval=${this.analysisInterval}`);
+    if (this.analysisInterval) {
+      clearInterval(this.analysisInterval);
+      this.analysisInterval = null;
+    }
     this.analysisInterval = setInterval(async () => {
-      console.log('⏰ Интервал сработал!');
+      console.log('⏰ Интервал анализа сработал! isRunning=' + this.isRunning);
       if (!this.isRunning) {
-        console.log('⏸️ Интервал пропущен: isRunning = false');
+        console.log('⏸️ Интервал анализа пропущен: isRunning = false');
         return;
       }
       try {
@@ -220,9 +225,10 @@ class TradingBot {
         console.error('❌ Ошибка в интервале анализа:', error);
       }
     }, 5 * 60 * 1000);
-    console.log('✅ Интервал анализа установлен');
+    console.log('✅ Интервал анализа установлен, id=' + (this.analysisInterval ? 'set' : 'null'));
     // Первый запуск сразу, но только при наличии свободного баланса
-    this.performAnalysis(false);
+    console.log('🚀 Первый запуск performAnalysis()...');
+    this.performAnalysis(false).catch(err => console.error('❌ Ошибка первого анализа:', err));
   }
 
   async forcePerformAnalysis() {
@@ -282,6 +288,10 @@ class TradingBot {
   async updateMarketData(symbol) {
     try {
       const newCandles = await this.api.getKlineData(symbol, '15', 50);
+      if (!newCandles || newCandles.length === 0) {
+        console.warn(`⚠️ Нет новых свечей для ${symbol}`);
+        return;
+      }
       const currentData = this.marketData.get(symbol);
       if (currentData) {
         const allCandles = [...currentData.candles, ...newCandles];
@@ -289,6 +299,12 @@ class TradingBot {
         const limitedCandles = uniqueCandles.slice(-200);
         this.marketData.set(symbol, {
           candles: limitedCandles,
+          lastUpdate: Date.now()
+        });
+      } else {
+        // Инициализация для нового символа
+        this.marketData.set(symbol, {
+          candles: newCandles,
           lastUpdate: Date.now()
         });
       }
@@ -387,8 +403,9 @@ class TradingBot {
         }
       } else {
         // Симуляция (локальная)
-        // азмер посчитает positionManager из доступного баланса
-        const result = this.positionManager.openPosition(symbol, { ...signal, size: this.positionManager.balance / this.numberOfPositions }, currentPrice);
+        const availableForSize = this.positionManager.getAvailableBalance();
+        console.log(`💵 Доступно для позиции: ${availableForSize.toFixed(2)} USDT, размер/позицию: ${(availableForSize / this.numberOfPositions).toFixed(2)} USDT`);
+        const result = this.positionManager.openPosition(symbol, { ...signal, size: availableForSize / this.numberOfPositions }, currentPrice);
         if (result.success) {
           console.log(`✅ ${result.message}`);
           console.log(`💰 Размер позиции: ${result.position.size.toFixed(2)} (USDT)`);

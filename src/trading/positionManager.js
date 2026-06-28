@@ -1,16 +1,67 @@
 // src/trading/positionManager.js
 
 const config = require('../config/config');
+const fs = require('fs');
+const path = require('path');
+
+const STATE_FILE = path.resolve(__dirname, '../../data/position_state.json');
 
 class PositionManager {
   constructor() {
-    // Инициализация из конфига
-    this.balance = config.demo.balance;
-    this.riskPercent = config.demo.riskPercent;   // переопределяется через numberOfPositions
-    this.maxPositions = config.demo.maxPositions; // тоже переопределяется
-    this.numberOfPositions = config.numberOfPositions || 10; // число частей
+    this.riskPercent = config.demo.riskPercent;
+    this.maxPositions = config.demo.maxPositions;
+    this.numberOfPositions = config.numberOfPositions || 10;
     this.positions = new Map();
     this.tradeHistory = [];
+    this.initialBalance = config.demo.balance;
+
+    const restored = this._loadState();
+    if (restored) {
+      console.log('Состояние восстановлено: баланс=' + this.balance.toFixed(2) + ', сделок в истории=' + this.tradeHistory.length);
+    } else {
+      this.balance = config.demo.balance;
+      console.log('Новое состояние: начальный баланс=' + this.balance.toFixed(2));
+    }
+  }
+
+  // ========== СОХРАНЕНИЕ / ЗАГРУЗКА СОСТОЯНИЯ ==========
+  _statePath() {
+    return STATE_FILE;
+  }
+
+  _saveState() {
+    try {
+      const dir = path.dirname(this._statePath());
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      const data = JSON.stringify({
+        balance: this.balance,
+        tradeHistory: this.tradeHistory,
+        initialBalance: this.initialBalance,
+        savedAt: Date.now()
+      }, null, 2);
+      fs.writeFileSync(this._statePath(), data, 'utf8');
+    } catch (error) {
+      console.error('Ошибка сохранения состояния:', error.message);
+    }
+  }
+
+  _loadState() {
+    try {
+      const filePath = this._statePath();
+      if (!fs.existsSync(filePath)) return false;
+      const raw = fs.readFileSync(filePath, 'utf8');
+      const data = JSON.parse(raw);
+      if (!data || typeof data !== 'object') return false;
+      this.balance = typeof data.balance === 'number' ? data.balance : config.demo.balance;
+      this.tradeHistory = Array.isArray(data.tradeHistory) ? data.tradeHistory : [];
+      this.initialBalance = typeof data.initialBalance === 'number' ? data.initialBalance : config.demo.balance;
+      return true;
+    } catch (error) {
+      console.warn('Не удалось загрузить состояние:', error.message);
+      return false;
+    }
   }
 
   // ========== НОВЫЙ МЕТОД: добавление позиции после реального ордера ==========
@@ -59,6 +110,7 @@ class PositionManager {
       position: { ...position },
       timestamp: Date.now()
     });
+      this._saveState();
 
     console.log(`✅ Позиция добавлена в менеджер: ${position.type} ${position.symbol}`);
     return { success: true, position, message: `Позиция добавлена` };
@@ -132,6 +184,7 @@ class PositionManager {
         position: { ...position },
         timestamp: Date.now()
       });
+      this._saveState();
 
       return {
         success: true,
@@ -178,6 +231,7 @@ class PositionManager {
       });
 
       this.positions.delete(symbol);
+      this._saveState();
 
       return {
         success: true,
@@ -301,7 +355,7 @@ class PositionManager {
       winningTrades: winningTrades,
       winRate: winRate,
       totalPnL: totalPnL,
-      totalPnLPercent: ((this.balance - config.demo.balance) / config.demo.balance) * 100
+      totalPnLPercent: this.initialBalance > 0 ? ((this.balance - this.initialBalance) / this.initialBalance) * 100 : 0
     };
   }
 
@@ -330,8 +384,10 @@ class PositionManager {
 
   resetDemoBalance() {
     this.balance = config.demo.balance;
+    this.initialBalance = config.demo.balance;
     this.positions.clear();
     this.tradeHistory = [];
+  this._saveState();
     return { success: true, message: 'Демо-баланс сброшен' };
   }
 }
